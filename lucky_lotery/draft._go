@@ -1,0 +1,85 @@
+package main
+
+import (
+	"encoding/json"
+	"net/http"
+
+	"github.com/gorilla/mux"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
+)
+
+type Customer struct {
+	gorm.Model
+	Fullname    string `json:"full_name"`
+	Address     string `json:"address"`
+	PhoneNumber string `json:"phone_number"`
+}
+
+type NumberType uint
+
+const (
+	NumberTypeHead NumberType = iota + 1
+	NumberTypeTail
+)
+
+type CustomerNumber struct {
+	gorm.Model
+	CustomerID uint       `json:"customer_id"`
+	Number     string     `json:"number"`
+	Type       NumberType `json:"type"`
+	Channel    string     `json:"channel"`
+	Customer   *Customer  `json:"-"`
+}
+
+var _db *gorm.DB
+
+func InitDB() error {
+	var err error
+
+	_db, err = gorm.Open(postgres.Open(""), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info),
+	})
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+type Response struct {
+	Result interface{} `json:"result"`
+	Error  interface{} `json:"error"`
+}
+
+func GetAlllCustomerNumbers() ([]*CustomerNumber, error) {
+	var res []*CustomerNumber
+
+	if err := _db.Find(&res).Error; err != nil {
+		return err, nil
+	}
+
+	return res, nil
+}
+
+func APIGetNumberListHandle(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	numbers, err := GetAlllCustomerNumbers()
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(&Response{Error: err.Error()})
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(&Response{Result: numbers})
+}
+
+func main() {
+	if err := InitDB(); err != nil {
+		panic(err)
+	}
+	r := mux.NewRouter()
+	r.HandleFunc("/api/number/list", APIGetNumberListHandle).Methods(http.MethodGet)
+
+}
