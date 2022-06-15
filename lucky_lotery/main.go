@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"time"
-
 	"github.com/gorilla/mux"
 )
 
@@ -38,33 +37,29 @@ type Response struct {
 var numbers []Number
 
 func GetNumbers(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
 	db := data.SetupDatabase()
 	fmt.Println("Getting numbers...")
 	rows, err := db.Query("SELECT * FROM numbers")
-	if err != nil {
-		json.NewEncoder(w).Encode(Response{Error: err})
-		return
-	}
+	utils.CheckErr(err)
 	defer rows.Close()
 	for rows.Next() {
 		number := Number{}
 		err = rows.Scan(&number.ID, &number.Numbers, &number.Head,
 			&number.Tail, &number.Chanel, &number.CustomerName, &number.PhoneNumber, &number.Date)
 		utils.CheckErr(err)
-		// number.Customer = &Customer{
-		// 	Fullname: number.CustomerName,
-		// }
 		numbers = append(numbers, number)
 	}
 
-	json.NewEncoder(w).Encode(numbers)
+	json.NewEncoder(w).Encode(Response{Result: numbers})
 }
 
 func addNumber(number *Number) error {
 	db := data.SetupDatabase()
-	// number := Number{}
-	// result, err := db.Exec("insert into numbers(number,customer_name,chanel,head,tail,phone_number) values (?,?,?,?,?,?)", number.Number, number.CustomerName, number.Chanel, number.Head, number.Tail, number.PhoneNumber)
-	return db.QueryRow("INSERT INTO numbers (numbers, head, tail, chanel, customer_name, phone_number) VALUES($1,$2, $3, $4, $5, $6) RETURNING id", number.Numbers, number.Head, number.Tail, number.Chanel, number.CustomerName, number.PhoneNumber).Scan(&number.ID)
+	return db.
+	 QueryRow("INSERT INTO numbers(numbers, head, tail, chanel,customer_name, phone_number) VALUES($1,$2, $3, $4, $5, $6) RETURNING id",
+	 number.Numbers, number.Head, number.Tail, number.Chanel, number.CustomerName, number.PhoneNumber).
+	 Scan(&number.ID)
 }
 
 func PostNumber(w http.ResponseWriter, r *http.Request) {
@@ -80,12 +75,38 @@ func PostNumber(w http.ResponseWriter, r *http.Request) {
 	json.Unmarshal(body, &number)
 
 	if err := addNumber(&number); err != nil {
-		fmt.Println(err)
 		json.NewEncoder(w).Encode(Response{Error: err})
 		return
 	}
 
 	json.NewEncoder(w).Encode(Response{Result: number})
+
+}
+
+func updateNumber(number *Number)(err error){
+	db := data.SetupDatabase()
+	_, err =  db.Exec("UPDATE numbers SET numbers = $2 where id = $1", number.ID, number.Numbers)
+	return
+}
+
+func PutNumber(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	var (
+		number Number
+	)
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		json.NewEncoder(w).Encode(Response{Error: err})
+		return
+	}
+	json.Unmarshal(body, &number)
+
+	if err := updateNumber(&number); err != nil {
+		json.NewEncoder(w).Encode(Response{Error: err})
+		return
+	}
+
+	json.NewEncoder(w).Encode(Response{Result: number.Numbers})
 
 }
 
@@ -95,5 +116,6 @@ func main() {
 	router := mux.NewRouter()
 	router.HandleFunc("/numbers", GetNumbers).Methods("GET")
 	router.HandleFunc("/create_number", PostNumber).Methods("POST")
+	router.HandleFunc("/update_number", PutNumber).Methods("PUT")
 	log.Fatal(http.ListenAndServe(":8080", router))
 }
